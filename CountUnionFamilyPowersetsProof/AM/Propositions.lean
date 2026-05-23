@@ -91,15 +91,42 @@ lemma c_eq_card_homogeneous_subsets {τ : Finset α} {D : Database α β} {x : F
     size. -/
 theorem representation_theorem (τ : Finset α) (D : Database α β) (o : β) :
     totalScoreA τ D o = totalScore τ D o := by
+  -- Do NOT unfold c yet; we need c_eq_card_homogeneous_subsets to apply directly.
   simp only [totalScoreA, totalScore, outcomeCount]
-  -- The proof swaps the order of summation: sum over (p, d) pairs.
-  -- Key steps (all pending formalization via Finset.sum_comm'):
-  -- 1. Expand each summand as a Finset.card = Σ 1
-  -- 2. Swap: Σ_{p ∈ A} Σ_{d ∈ σ(p) with d.outcome=o} 1
-  --        = Σ_{d ∈ D with d.outcome=o} |{p ∈ A | p ⊆ τ ∩ d.features}|
-  --        (using mem_σ_iff_subset_inter)
-  -- 3. |{p ∈ A | p ⊆ τ ∩ d.features}| = c(τ ∩ d.features)
-  --    (using c_eq_card_homogeneous_subsets)
-  -- 4. Group d's by x = τ ∩ d.features using D_eq_biUnion_θ
-  -- 5. For each x ∈ M: contributes c(x) · |{d ∈ θ(x) | d.outcome = o}|
-  sorry
+  -- Step 1: For each p ∈ A ⊆ ℘(τ), expand |σ(p) ∩ D_o| via Proposition 2.
+  have lhs_eq : ∀ p ∈ analogicalSet τ D,
+      ((σ D p).filter (fun d => d.outcome = o)).card =
+      (matchSet τ D).sum (fun x =>
+        if p ⊆ x then ((θ τ D x).filter (fun d => d.outcome = o)).card else 0) := by
+    intro p hp
+    rw [mem_analogicalSet] at hp
+    -- σ(p) = ⋃_{p ⊆ x, x ∈ M} θ(x); filter distributes over biUnion
+    have heq : ((σ D p).filter (fun d => d.outcome = o)) =
+        (matchSet τ D).biUnion (fun x =>
+          (if p ⊆ x then θ τ D x else ∅).filter (fun d => d.outcome = o)) := by
+      rw [σ_eq_biUnion_θ hp.1]
+      ext d; simp [Finset.mem_biUnion, Finset.mem_filter]; tauto
+    -- Disjointness of the filtered θ-fibers
+    have hdisj : ∀ x ∈ matchSet τ D, ∀ y ∈ matchSet τ D, x ≠ y →
+        Disjoint ((if p ⊆ x then θ τ D x else ∅).filter (fun d => d.outcome = o))
+                 ((if p ⊆ y then θ τ D y else ∅).filter (fun d => d.outcome = o)) := by
+      intro x _ y _ hne
+      split_ifs with hpx hpy
+      · exact (θ_disjoint hne).mono (Finset.filter_subset _ _) (Finset.filter_subset _ _)
+      · simp
+      · simp
+      · simp
+    rw [heq, Finset.card_biUnion hdisj]
+    -- Pointwise: ((if p ⊆ x then θ x else ∅).filter f).card = if p ⊆ x then |θ(x) ∩ Do| else 0
+    apply Finset.sum_congr rfl; intro x _
+    split_ifs with hpx <;> simp
+  rw [Finset.sum_congr rfl lhs_eq]
+  -- Step 2: Swap the independent double sum (A × M → M × A)
+  rw [Finset.sum_comm]
+  -- Step 3: For each x ∈ M, the inner sum Σ_{p ∈ A} (if p ⊆ x then c else 0) = c_x * c
+  apply Finset.sum_congr rfl; intro x hx
+  -- Pull the constant out using filter + sum_const_nat
+  rw [← Finset.sum_filter, Finset.sum_const_nat (fun _ _ => rfl)]
+  -- Now: ((analogicalSet τ D).filter (· ⊆ x)).card * |...| = c τ D x * |...|
+  congr 1
+  exact (c_eq_card_homogeneous_subsets hx).symm

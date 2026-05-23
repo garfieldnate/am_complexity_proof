@@ -136,7 +136,7 @@ CountUnionFamilyPowersetsProof/
     Functions.lean    ✅ DONE — matchSet, θ, σ, κ, δ; Props 1+2
     Homogeneity.lean  ✅ DONE — IsHomogeneous, IsDetermHomogeneous, analogicalSet A
     Score.lean        ✅ DONE — outcomeCount, c_x coefficients, totalScore, totalScoreA
-    Propositions.lean ⚠ PARTIAL — key aux lemmas done; Theorem 1 body is sorry
+    Propositions.lean ✅ DONE — key aux lemmas + Theorem 1 (representation_theorem) proved
     Hardness.lean     ⚠ PARTIAL — database construction + structural lemmas done;
                                   hardness theorem statement is placeholder (trivial sorry)
 ```

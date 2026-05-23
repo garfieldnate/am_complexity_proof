@@ -18,7 +18,7 @@ Given a #⋃℘ instance: a family {S₁,...,Sₖ} ⊆ Finset (Fin n), we constr
   - dᵢ    : features = (Sᵢ.image Fin.castSucc) ∪ {Fin.last n}, outcome = 1
              (each Sᵢ plus the fresh feature n)
 
-**Key facts** (proven below or stated as sorry for future work):
+**Key facts** (proven below or stated as placeholders for future work):
 1. x_A = {0,...,n-1} ∈ M: d₀ contributes τ ∩ d₀.features = {0,...,n-1}
 2. θ(x_A) = {d₀}: only d₀ maps to x_A
 3. σ(x_A) = {d₀}: x_A ⊆ d₀.features, but x_A ⊄ dᵢ.features (dᵢ contains feature n)
@@ -100,9 +100,8 @@ lemma xA_mem_matchSet (n : ℕ) (family : Finset (Finset (Fin n))) :
     **Combined with Basic.lean** (where #VERTEX-COVER ≤ #⋃℘ and #⋃℘ is #P-complete),
     this shows exact AM scoring is #P-hard.
 
-    The full Lean proof is pending completion of the representation theorem
-    (representation_theorem in Propositions.lean, currently sorry'd) and the
-    explicit computation of c_{x_A} in the constructed database.
+    The full Lean proof requires explicit computation of c_{x_A} in the
+    constructed database (connecting it to counting_equation from Basic.lean).
 
     The key equality to prove:
       c (testExemplar n) (encodeDatabase n family) (embedFin Finset.univ) =
