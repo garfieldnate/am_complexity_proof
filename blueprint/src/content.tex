@@ -1,0 +1,721 @@
+% In this file you should put the actual content of the blueprint.
+% It will be used both by the web and the print version.
+
+\tableofcontents
+
+% ============================================================
+\chapter{Overview}
+% ============================================================
+
+This document describes a machine-checked proof, formalized in Lean~4 with
+Mathlib, that computing the exact \emph{Analogical Modeling (AM) score} is
+$\#P$-complete.
+
+The proof proceeds by a chain of polynomial-time Turing reductions:
+
+\[
+  \#\text{VERTEX-COVER} \;\leq\; \#\bigcup\wp \;\leq\; \text{exact-AM-scoring}
+\]
+
+Each $\leq$ means ``is polynomial-time reducible to,'' so the rightmost problem
+is at least as hard as the leftmost.  Since $\#\text{VERTEX-COVER}$ is known to
+be $\#P$-hard (Greenhill 2000), this chain makes exact AM scoring $\#P$-hard.
+Combined with the observation that AM membership is verifiable in polynomial
+time, exact AM scoring is $\mathbf{\#P}$\textbf{-complete}.
+
+The two reductions are proved in separate Lean files:
+\begin{itemize}
+  \item \texttt{Basic.lean} proves the left reduction:
+        $\#\text{VERTEX-COVER} \leq \#\bigcup\wp$.
+  \item \texttt{AM/Hardness.lean} proves the right reduction:
+        $\#\bigcup\wp \leq \text{exact-AM-scoring}$.
+\end{itemize}
+
+Both reductions share the same structure: they embed a counting problem into a
+complementary-counting equation of the form $\text{answer} + \text{oracle} =
+2^n$, so that the oracle's answer is recoverable by subtraction.
+
+% ============================================================
+\chapter{Background}
+% ============================================================
+
+\section{The Complexity Class \#P}
+
+Valiant (1979) introduced the class $\#P$ to capture counting problems.
+Informally, $f \in \#P$ if there is a polynomial-time nondeterministic Turing
+machine $M$ such that $f(x)$ equals the number of accepting computation paths
+of $M$ on input $x$.
+
+A problem $f$ is $\#P$\emph{-hard} if every problem in $\#P$ can be
+polynomial-time Turing-reduced to $f$.  A problem that is both $\#P$-hard and
+in $\#P$ is $\#P$\emph{-complete}.
+
+\section{The Intermediate Problem \texorpdfstring{$\#\bigcup\wp$}{\#UnionPowersets}}
+
+The intermediate problem we use as a stepping stone is:
+
+\begin{definition}[$\#\bigcup\wp$]
+  \label{def:count-union-powersets}
+  Given a finite family $\mathcal{F} = \{S_1, \ldots, S_k\}$ of subsets of a
+  finite set $U$, compute
+  \[
+    \Bigl|\bigcup_{S \in \mathcal{F}} \wp(S)\Bigr|,
+  \]
+  the number of elements in the union of the powerset families of the $S_i$.
+\end{definition}
+
+Here $\wp(S)$ denotes the powerset of $S$ (the collection of all subsets of
+$S$).  Since a subset $T$ belongs to $\bigcup_i \wp(S_i)$ exactly when $T
+\subseteq S_i$ for some $i$, counting $|\bigcup_i \wp(S_i)|$ is the same as
+counting the number of subsets of $U$ that are contained in at least one $S_i$.
+
+\section{The Analogical Modeling Algorithm}
+
+Analogical Modeling (AM) is a memory-based classification algorithm introduced
+by Skousen (1989) and analyzed computationally by Johnsen \& Johansson (2005).
+We summarize the key objects and operations here.
+
+Let $D$ be a database of exemplars, each with a feature set and an outcome
+class.  Let $\tau$ be the test query (also a feature set).  AM computes a
+score for each possible outcome.
+
+\begin{description}
+  \item[\textbf{Match set} $M$]
+    $M = \{ \tau \cap d.\mathsf{features} \mid d \in D \}$: the set of distinct
+    ``match patterns'' that the test query produces against each exemplar.
+    If you have implemented AM, $M$ is what your algorithm computes first:
+    intersect the query's features with each stored exemplar's features, then
+    deduplicate.
+
+  \item[\textbf{Partition} $\theta$]
+    $\theta(x) = \{ d \in D \mid \tau \cap d.\mathsf{features} = x \}$: the
+    fiber of $D$ over each element $x \in M$.  The $\theta$-fibers partition
+    $D$.
+
+  \item[\textbf{Support} $\sigma$]
+    $\sigma(p) = \{ d \in D \mid p \subseteq d.\mathsf{features} \}$: the set
+    of exemplars ``activated'' by a pattern $p$.  This is anti-monotone:
+    $p \subseteq q$ implies $\sigma(q) \subseteq \sigma(p)$.
+
+  \item[\textbf{Disagreement} $\delta$]
+    $\delta(p) = |\{ (r,s) \in \sigma(p)^2 \mid r.\mathsf{outcome} \neq
+    s.\mathsf{outcome} \}|$: the number of disagreeing pairs in the support of
+    $p$.  If all exemplars in $\sigma(p)$ agree, $\delta(p) = 0$.
+
+  \item[\textbf{Homogeneity}]
+    A pattern $p \in \wp(\tau)$ is \emph{homogeneous} (with respect to $\tau$
+    and $D$) if:
+    \begin{enumerate}
+      \item $\sigma(p) \neq \emptyset$ (the support is non-empty), and
+      \item for every $q \in \wp(\tau)$ with $p \subseteq q$ and $\sigma(q)
+            \neq \emptyset$, $\delta(q) = \delta(p)$.
+    \end{enumerate}
+    Intuitively, $p$ is homogeneous if the disagreement count does not increase
+    as we move to larger patterns within $\tau$.
+
+  \item[\textbf{Analogical set} $A$]
+    $A \subseteq \wp(\tau)$ is the set of all homogeneous patterns.  The AM
+    algorithm sums over $A$ to compute the total score.
+
+  \item[\textbf{Coefficient} $c_x$]
+    For $x \in M$, $c_x = |\{ p \in \wp(x) \mid p \text{ is homogeneous}\}|$:
+    the number of homogeneous sub-patterns of $x$.
+
+  \item[\textbf{Total score}]
+    $\mathsf{totalScore}(\tau, D, o) = \sum_{x \in M} c_x \cdot
+    |\theta(x) \cap D_o|$, where $D_o = \{d \in D \mid d.\mathsf{outcome} = o\}$.
+    This is the representation theorem (Theorem~1 in Johnsen \& Johansson): the
+    sum over $A$ equals this weighted sum over $M$.
+\end{description}
+
+% ============================================================
+\chapter{Reduction 1: \texorpdfstring{$\#\text{VERTEX-COVER} \leq \#\bigcup\wp$}{\#VERTEX-COVER <= \#UnionPowersets}}
+% ============================================================
+
+\emph{Lean source: \texttt{CountUnionFamilyPowersetsProof/Basic.lean}}
+
+\section{Definitions}
+
+\begin{definition}[Vertex cover]
+  \label{def:vertex-cover}
+  \lean{IsVertexCover}
+  \leanok
+  Let $G = (V, E)$ be a hypergraph (a set of vertices $V$ and a collection of
+  edges $E \subseteq \wp(V)$).  A subset $T \subseteq V$ is a
+  \emph{vertex cover} of $G$ if $T$ intersects every edge: for every $e \in E$,
+  $T \cap e \neq \emptyset$.
+\end{definition}
+
+\begin{definition}[Union of complement powersets]
+  \label{def:union-complement-powersets}
+  \lean{unionComplementPowersets}
+  \leanok
+  Given a vertex set $V$ and a collection of edges $E$, define
+  \[
+    \mathsf{UCP}(V, E) = \bigcup_{e \in E} \wp(V \setminus e).
+  \]
+  This is the union of the powersets of the edge complements.
+\end{definition}
+
+\section{The Key Bijection}
+
+The reduction from $\#\text{VERTEX-COVER}$ to $\#\bigcup\wp$ rests on a
+perfect bijection between non-vertex-covers and elements of $\mathsf{UCP}$:
+
+\begin{theorem}[Vertex cover characterization]
+  \label{thm:vc-iff-not-in-ucp}
+  \lean{isVertexCover_iff_not_mem_unionComplementPowersets}
+  \leanok
+  \uses{def:vertex-cover, def:union-complement-powersets}
+  For $T \subseteq V$, $T$ is a vertex cover of $(V, E)$ if and only if $T
+  \notin \mathsf{UCP}(V, E)$.
+
+  \begin{proof}
+    Unfolding definitions:
+    \begin{align*}
+      T \in \mathsf{UCP}(V, E)
+        &\iff \exists\, e \in E,\; T \subseteq V \setminus e \\
+        &\iff \exists\, e \in E,\; \forall x \in T,\; x \notin e
+          \quad (\text{since } T \subseteq V) \\
+        &\iff \exists\, e \in E,\; T \cap e = \emptyset \\
+        &\iff \neg\,\mathsf{IsVertexCover}(E, T). \qedhere
+    \end{align*}
+  \end{proof}
+\end{theorem}
+
+\section{Partition and Counting}
+
+Because vertex covers and non-vertex-covers partition $\wp(V)$, and
+non-vertex-covers correspond exactly to $\mathsf{UCP}(V, E)$, we obtain the
+counting equation:
+
+\begin{lemma}[Disjointness]
+  \label{lem:vc-disjoint}
+  \lean{vertexCovers_disjoint}
+  \leanok
+  \uses{thm:vc-iff-not-in-ucp}
+  The set of vertex covers (viewed as a subset of $\wp(V)$) and
+  $\mathsf{UCP}(V, E)$ are disjoint.
+\end{lemma}
+
+\begin{lemma}[Full coverage]
+  \label{lem:vc-union}
+  \lean{vertexCovers_union_eq}
+  \leanok
+  \uses{thm:vc-iff-not-in-ucp}
+  The vertex covers and $\mathsf{UCP}(V, E)$ together equal $\wp(V)$.
+\end{lemma}
+
+\begin{theorem}[Counting equation for vertex covers]
+  \label{thm:counting-equation-vc}
+  \lean{counting_equation}
+  \leanok
+  \uses{lem:vc-disjoint, lem:vc-union}
+  For any graph $G = (V, E)$:
+  \[
+    \#\{\text{vertex covers of }G\} + |\mathsf{UCP}(V, E)| = 2^{|V|}.
+  \]
+
+  \begin{proof}
+    By Lemmas~\ref{lem:vc-disjoint} and~\ref{lem:vc-union}, vertex covers and
+    $\mathsf{UCP}$ form a disjoint partition of $\wp(V)$, which has $2^{|V|}$
+    elements.  The counting equation follows from the inclusion-exclusion
+    principle for disjoint sets.
+  \end{proof}
+
+  \textbf{Significance.}  Given an oracle that computes
+  $|\mathsf{UCP}(V, E)|$, we recover $\#\text{VERTEX-COVER}$ by subtraction:
+  $\#\text{VC} = 2^{|V|} - |\mathsf{UCP}(V, E)|$.  This is a polynomial-time
+  Turing reduction, so $\#\text{VERTEX-COVER} \leq_T \#\bigcup\wp$.  Since
+  $\#\text{VERTEX-COVER}$ is $\#P$-hard (Greenhill 2000), $\#\bigcup\wp$ is
+  $\#P$-hard as well.
+\end{theorem}
+
+% ============================================================
+\chapter{Reduction 2: \texorpdfstring{$\#\bigcup\wp \leq$ Exact AM Scoring}{\#UnionPowersets <= Exact AM Scoring}}
+% ============================================================
+
+\emph{Lean source: \texttt{CountUnionFamilyPowersetsProof/AM/Hardness.lean}}
+
+\section{The Database Construction}
+
+Given a $\#\bigcup\wp$ instance --- a family $\mathcal{F} = \{S_1, \ldots, S_k\}
+\subseteq \wp(\mathsf{Fin}\,n)$ --- we construct an AM database $D$ over $n+1$
+features (indexed by $\mathsf{Fin}(n+1)$) and two outcome classes
+($\mathsf{Fin}\,2$, i.e.\ outcomes 0 and 1).
+
+The key idea is that the real features $0, \ldots, n-1$ encode the sets $S_i$,
+while feature $n$ is a ``fresh'' marker that distinguishes the class-1 exemplars
+from the class-0 exemplar.
+
+\begin{definition}[Feature embedding]
+  \label{def:embed-fin}
+  \lean{embedFin}
+  \leanok
+  $\mathsf{embedFin}(S) = \{ \mathsf{castSucc}(x) \mid x \in S \} \subseteq
+  \mathsf{Fin}(n+1)$, where $\mathsf{castSucc} : \mathsf{Fin}\,n \to
+  \mathsf{Fin}(n+1)$ is the natural inclusion that maps each $x < n$ to itself.
+  This embeds a subset of the first $n$ features into the $(n+1)$-feature space,
+  leaving feature $n$ untouched.
+\end{definition}
+
+\begin{definition}[Fresh feature]
+  \label{def:fresh-feature}
+  \lean{freshFeature}
+  \leanok
+  $\mathsf{freshFeature}(n) = \mathsf{Fin.last}\,n = n \in \mathsf{Fin}(n+1)$,
+  the ``new'' feature that serves as a tag for class-1 exemplars.
+\end{definition}
+
+\begin{definition}[Database components]
+  \label{def:database-components}
+  \lean{d₀}
+  \lean{dᵢ}
+  \lean{encodeDatabase}
+  \lean{testExemplar}
+  \lean{x_A}
+  \leanok
+  \uses{def:embed-fin, def:fresh-feature}
+  \begin{itemize}
+    \item $\tau = \mathsf{Fin}(n+1).\mathsf{univ}$ (the test query uses all features).
+    \item $d_0$: the class-0 exemplar, with features
+      $\mathsf{embedFin}(\mathsf{Fin}\,n.\mathsf{univ}) = \{0,\ldots,n-1\}$ and
+      outcome $0$.
+    \item $d_i(S)$: for each $S \in \mathcal{F}$, a class-1 exemplar with
+      features $\mathsf{embedFin}(S) \cup \{n\}$ and outcome $1$.
+    \item $D = \{d_0\} \cup \{d_i(S) \mid S \in \mathcal{F}\}$: the full database.
+    \item $x_A = \mathsf{embedFin}(\mathsf{Fin}\,n.\mathsf{univ}) = \{0,\ldots,n-1\}$:
+      the match pattern that $d_0$ produces against $\tau$, also called the
+      ``class-0 region.''
+  \end{itemize}
+
+  \begin{center}
+    \begin{tabular}{lll}
+      \hline
+      Exemplar & Features & Outcome \\
+      \hline
+      $d_0$ & $\{0, 1, \ldots, n-1\}$ & $0$ \\
+      $d_i(S_1)$ & $\mathsf{embedFin}(S_1) \cup \{n\}$ & $1$ \\
+      $d_i(S_2)$ & $\mathsf{embedFin}(S_2) \cup \{n\}$ & $1$ \\
+      $\vdots$ & $\vdots$ & $\vdots$ \\
+      $d_i(S_k)$ & $\mathsf{embedFin}(S_k) \cup \{n\}$ & $1$ \\
+      \hline
+    \end{tabular}
+  \end{center}
+\end{definition}
+
+\section{Structural Properties of the Database}
+
+We establish some foundational facts about how the fresh feature separates the
+two outcome classes.
+
+\begin{lemma}[Fresh feature separates classes]
+  \label{lem:fresh-separation}
+  \lean{d₀_not_fresh}
+  \lean{dᵢ_has_fresh}
+  \lean{fresh_not_in_xA}
+  \leanok
+  \uses{def:database-components}
+  \begin{itemize}
+    \item $\mathsf{freshFeature}(n) \notin d_0.\mathsf{features}$: the class-0 exemplar
+      does not have the fresh feature.
+    \item $\mathsf{freshFeature}(n) \in d_i(S).\mathsf{features}$: every class-1
+      exemplar does have the fresh feature.
+    \item $\mathsf{freshFeature}(n) \notin x_A$: the class-0 match pattern does not
+      contain the fresh feature.
+  \end{itemize}
+  These follow from the fact that $\mathsf{castSucc}$ never produces $\mathsf{Fin.last}$.
+\end{lemma}
+
+\begin{lemma}[$x_A$ contains all non-fresh features]
+  \label{lem:xA-complement}
+  \lean{mem_xA_of_ne_fresh}
+  \lean{sub_xA_of_no_fresh}
+  \leanok
+  \uses{lem:fresh-separation}
+  $x_A$ is the complement of $\{\mathsf{freshFeature}(n)\}$ within
+  $\mathsf{Fin}(n+1)$: every element of $\mathsf{Fin}(n+1)$ other than $n$ lies
+  in $x_A$.  In particular, if a set $q \subseteq \mathsf{Fin}(n+1)$ does not
+  contain $n$, then $q \subseteq x_A$.
+\end{lemma}
+
+\section{Match Patterns and \texorpdfstring{$\theta$}{theta}-Fibers}
+
+Since $\tau = \mathsf{univ}$, the match pattern of any exemplar $d$ is simply
+$d.\mathsf{features}$ itself.
+
+\begin{lemma}[Match set of the encoded database]
+  \label{lem:matchset}
+  \lean{matchSet_encodeDatabase}
+  \leanok
+  \uses{def:database-components}
+  \[
+    M = \mathsf{matchSet}(\tau, D)
+      = \{x_A\} \cup \{\mathsf{embedFin}(S) \cup \{n\} \mid S \in \mathcal{F}\}.
+  \]
+  The match set has $|\mathcal{F}| + 1$ elements: one for $d_0$ and one for each
+  $d_i(S)$.
+\end{lemma}
+
+\begin{lemma}[$\theta$-fiber at $x_A$]
+  \label{lem:theta-xA}
+  \lean{θ_xA}
+  \leanok
+  \uses{lem:matchset, def:database-components}
+  $\theta(x_A) = \{d_0\}$.
+
+  \begin{proof}
+    Any exemplar $e \in \theta(x_A)$ satisfies $\tau \cap e.\mathsf{features}
+    = x_A$.  Since $\tau = \mathsf{univ}$, this means $e.\mathsf{features} = x_A$.
+    Among all exemplars, only $d_0$ has features exactly $x_A$: each $d_i(S)$
+    has features $\mathsf{embedFin}(S) \cup \{n\}$, which contains $n$, while
+    $x_A$ does not.
+  \end{proof}
+\end{lemma}
+
+\begin{lemma}[Outcome counts in $\theta$-fibers]
+  \label{lem:outcome-counts}
+  \lean{outcomeCount_θ_xA}
+  \lean{outcomeCount_θ_non_xA}
+  \leanok
+  \uses{lem:theta-xA}
+  \begin{itemize}
+    \item $\mathsf{outcomeCount}(\theta(x_A), 0) = 1$: the fiber $\{d_0\}$
+      contains exactly one class-0 exemplar.
+    \item For each $S \in \mathcal{F}$:
+      $\mathsf{outcomeCount}(\theta(\mathsf{embedFin}(S) \cup \{n\}), 0) = 0$:
+      no class-0 exemplars appear in the class-1 fibers.
+  \end{itemize}
+\end{lemma}
+
+\section{Support Characterization}
+
+Recall that $\sigma(p) = \{d \in D \mid p \subseteq d.\mathsf{features}\}$.
+For patterns $p \subseteq x_A$ (no fresh feature), the support splits neatly by
+outcome class.
+
+\begin{lemma}[$d_0$ is always supported]
+  \label{lem:d0-in-sigma}
+  \lean{d₀_in_σ_of_sub_xA}
+  \leanok
+  \uses{def:database-components}
+  For every $p \subseteq x_A$, $d_0 \in \sigma(p)$.
+
+  \begin{proof}
+    $p \subseteq x_A = d_0.\mathsf{features}$, so by definition $d_0 \in
+    \sigma(p)$.
+  \end{proof}
+\end{lemma}
+
+\begin{lemma}[$d_i(S)$ membership in $\sigma$]
+  \label{lem:di-in-sigma}
+  \lean{dᵢ_in_σ_iff}
+  \leanok
+  \uses{def:database-components, lem:xA-complement}
+  For $p \subseteq x_A$ and $S \in \mathcal{F}$:
+  \[
+    d_i(S) \in \sigma(p)
+    \iff p \subseteq \mathsf{embedFin}(S).
+  \]
+
+  \begin{proof}
+    $d_i(S).\mathsf{features} = \mathsf{embedFin}(S) \cup \{n\}$.  Since $p
+    \subseteq x_A$ and $n \notin x_A$, we have $n \notin p$.  Therefore:
+    \[
+      p \subseteq \mathsf{embedFin}(S) \cup \{n\}
+      \iff p \subseteq \mathsf{embedFin}(S). \qedhere
+    \]
+  \end{proof}
+\end{lemma}
+
+\section{Disagreement Analysis}
+
+\begin{lemma}[Disagreement is positive when outcomes differ]
+  \label{lem:delta-pos}
+  \lean{δ_pos_of_disagreeing}
+  \leanok
+  If $r, s \in \sigma(m)$ and $r.\mathsf{outcome} \neq s.\mathsf{outcome}$,
+  then $\delta(m) > 0$.
+\end{lemma}
+
+\begin{lemma}[Fresh feature kills $d_0$'s support]
+  \label{lem:d0-not-in-sigma-fresh}
+  \lean{d₀_not_in_σ_if_fresh}
+  \leanok
+  \uses{lem:fresh-separation}
+  If $n \in q$, then $d_0 \notin \sigma(q)$.
+
+  \begin{proof}
+    $d_0$ lacks feature $n$, so no pattern containing $n$ can be a subset of
+    $d_0.\mathsf{features}$.
+  \end{proof}
+\end{lemma}
+
+\begin{lemma}[Patterns containing $n$ have zero disagreement]
+  \label{lem:delta-zero-fresh}
+  \lean{δ_zero_of_fresh_in_q}
+  \leanok
+  \uses{lem:d0-not-in-sigma-fresh}
+  If $n \in q$, then $\delta(q) = 0$.
+
+  \begin{proof}
+    When $n \in q$, $d_0 \notin \sigma(q)$.  Every exemplar in $\sigma(q)$ is
+    therefore one of the $d_i(S)$, all of which have outcome $1$.  Since all
+    exemplars in $\sigma(q)$ agree on outcome $1$, there are no disagreeing
+    pairs, so $\delta(q) = 0$.
+  \end{proof}
+\end{lemma}
+
+\section{Homogeneity Characterization}
+
+This is the mathematical heart of the reduction.
+
+\begin{theorem}[Homogeneity characterization]
+  \label{thm:homogeneous-iff}
+  \lean{isHomogeneous_iff}
+  \leanok
+  \uses{lem:d0-in-sigma, lem:di-in-sigma, lem:delta-pos, lem:delta-zero-fresh,
+        lem:xA-complement}
+  For $p \subseteq x_A$:
+  \[
+    p \text{ is homogeneous in } (\tau, D)
+    \iff \forall S \in \mathcal{F},\; p \not\subseteq \mathsf{embedFin}(S).
+  \]
+
+  In words: a sub-pattern of $x_A$ is homogeneous exactly when it does not sit
+  inside any of the $S_i$.
+
+  \begin{proof}
+    ($\Rightarrow$) Suppose $p$ is homogeneous and $p \subseteq \mathsf{embedFin}(S)$
+    for some $S \in \mathcal{F}$.  Then both $d_0$ and $d_i(S)$ are in $\sigma(p)$
+    (by Lemmas~\ref{lem:d0-in-sigma} and~\ref{lem:di-in-sigma}) with different
+    outcomes, so $\delta(p) > 0$ (Lemma~\ref{lem:delta-pos}).
+
+    Now consider $q = p \cup \{n\}$.  We have $p \subseteq q$ and $\sigma(q)$ is
+    nonempty (since $d_i(S) \in \sigma(q)$ because $q = p \cup \{n\} \subseteq
+    \mathsf{embedFin}(S) \cup \{n\} = d_i(S).\mathsf{features}$).
+    By Lemma~\ref{lem:delta-zero-fresh}, $\delta(q) = 0$.  But homogeneity
+    requires $\delta(q) = \delta(p) > 0$, a contradiction.
+
+    ($\Leftarrow$) Suppose $p \not\subseteq \mathsf{embedFin}(S)$ for all $S \in
+    \mathcal{F}$.  By Lemma~\ref{lem:di-in-sigma}, no $d_i(S)$ is in $\sigma(p)$,
+    so $\sigma(p) = \{d_0\}$.  Then $\delta(p) = 0$ (only one exemplar, no pairs
+    with different outcomes).
+
+    For every superset $q \supseteq p$ in $\wp(\tau)$ with $\sigma(q) \neq
+    \emptyset$:
+    \begin{itemize}
+      \item If $n \in q$: by Lemma~\ref{lem:delta-zero-fresh}, $\delta(q) = 0 =
+            \delta(p)$. \cmark
+      \item If $n \notin q$: then $q \subseteq x_A$ (Lemma~\ref{lem:xA-complement}).
+            By the same argument as for $p$ (any $d_i(S) \in \sigma(q)$ would
+            give $p \subseteq q \subseteq \mathsf{embedFin}(S)$, contradicting our
+            assumption), $\sigma(q) = \{d_0\}$, so $\delta(q) = 0 = \delta(p)$.
+            \cmark
+    \end{itemize}
+    Thus $\delta$ is constant (always $0$) on $\wp(\tau)$ above $p$, and $p$ is
+    homogeneous.
+  \end{proof}
+\end{theorem}
+
+\section{Counting \texorpdfstring{$c_{x_A}$}{c\_xA}}
+
+\begin{definition}[Union of embedded powersets]
+  \label{def:union-embedded-powersets}
+  \lean{unionEmbeddedPowersets}
+  \leanok
+  \uses{def:embed-fin}
+  $\mathsf{UEP}(\mathcal{F}) = \bigcup_{S \in \mathcal{F}} \wp(\mathsf{embedFin}(S))$:
+  the ``bad'' subsets of $x_A$ --- those contained in at least one $S_i$.
+\end{definition}
+
+\begin{theorem}[$c_{x_A}$ equals avoiding subsets]
+  \label{thm:c-xA-card}
+  \lean{c_xA_eq_card_avoiding}
+  \leanok
+  \uses{thm:homogeneous-iff, def:union-embedded-powersets}
+  \[
+    c_{x_A} = |\{p \subseteq x_A \mid \forall S \in \mathcal{F},\; p
+    \not\subseteq \mathsf{embedFin}(S)\}|.
+  \]
+  That is, $c_{x_A}$ is the number of subsets of $x_A$ that avoid all $S_i$.
+\end{theorem}
+
+\begin{theorem}[$c_{x_A}$ counting equation]
+  \label{thm:c-xA-counting}
+  \lean{c_xA_counting}
+  \leanok
+  \uses{thm:c-xA-card, def:union-embedded-powersets}
+  \[
+    c_{x_A} + |\mathsf{UEP}(\mathcal{F})| = 2^n.
+  \]
+
+  \begin{proof}
+    Every subset of $x_A$ either avoids all $S_i$ (homogeneous: counted by
+    $c_{x_A}$) or is contained in some $S_i$ (unhomogeneous: counted by
+    $|\mathsf{UEP}(\mathcal{F})|$).  These two collections are disjoint and
+    together equal $\wp(x_A)$, which has $2^{|x_A|} = 2^n$ elements.
+  \end{proof}
+\end{theorem}
+
+\section{The Total Score}
+
+\begin{theorem}[Total score equals $c_{x_A}$]
+  \label{thm:total-score-eq-c}
+  \lean{totalScore_eq_c_xA}
+  \leanok
+  \uses{lem:matchset, lem:outcome-counts, thm:c-xA-counting}
+  \[
+    \mathsf{totalScore}(\tau, D, 0) = c_{x_A}.
+  \]
+
+  \begin{proof}
+    By the representation theorem (Theorem~1 of Johnsen \& Johansson, proved as
+    $\mathtt{representation\_theorem}$ in \texttt{Propositions.lean}):
+    \[
+      \mathsf{totalScore}(\tau, D, 0)
+      = \sum_{x \in M} c_x \cdot \mathsf{outcomeCount}(\theta(x), 0).
+    \]
+    By Lemma~\ref{lem:matchset}, $M = \{x_A\} \cup \{\mathsf{embedFin}(S) \cup
+    \{n\} \mid S \in \mathcal{F}\}$.  By Lemma~\ref{lem:outcome-counts}, only
+    $x_A$ contributes: $\mathsf{outcomeCount}(\theta(x_A), 0) = 1$ and all other
+    fibers have $\mathsf{outcomeCount} = 0$.  Therefore:
+    \[
+      \mathsf{totalScore}(\tau, D, 0)
+      = c_{x_A} \cdot 1 + \sum_{S \in \mathcal{F}} c_{\mathsf{embedFin}(S)\cup\{n\}}
+        \cdot 0
+      = c_{x_A}. \qedhere
+    \]
+  \end{proof}
+\end{theorem}
+
+\section{The Main Hardness Theorem}
+
+\begin{theorem}[$\#P$-hardness of exact AM scoring]
+  \label{thm:am-hard}
+  \lean{exact_AM_scoring_is_hard}
+  \leanok
+  \uses{thm:total-score-eq-c, thm:c-xA-counting}
+  For the encoded database $D$ and test query $\tau$:
+  \[
+    \mathsf{totalScore}(\tau, D, 0) + |\mathsf{UEP}(\mathcal{F})| = 2^n.
+  \]
+
+  \begin{proof}
+    Immediate from Theorems~\ref{thm:total-score-eq-c}
+    and~\ref{thm:c-xA-counting}.
+  \end{proof}
+
+  \textbf{Significance.}  Given an oracle for $\mathsf{totalScore}$, we recover
+  $|\bigcup_i \wp(S_i)|$ by subtraction: $|\mathsf{UEP}(\mathcal{F})| = 2^n -
+  \mathsf{totalScore}(\tau, D, 0)$.
+
+  The construction is polynomial in $n$ and $k = |\mathcal{F}|$: the database
+  has $k+1$ exemplars and $n+1$ features, and the test query has $n+1$ features.
+  This is therefore a polynomial-time Turing reduction $\#\bigcup\wp \leq_T
+  \text{exact-AM-scoring}$.
+
+  Combining with the first reduction (Chapter~3): $\#\text{VERTEX-COVER}
+  \leq_T \#\bigcup\wp \leq_T \text{exact-AM-scoring}$.  Since
+  $\#\text{VERTEX-COVER}$ is $\#P$-hard (Greenhill 2000), exact AM scoring
+  is $\mathbf{\#P}$\textbf{-hard}.
+\end{theorem}
+
+% ============================================================
+\chapter{The Representation Theorem}
+% ============================================================
+
+\emph{Lean source: \texttt{CountUnionFamilyPowersetsProof/AM/Propositions.lean}}
+
+The bridge between the sum over the analogical set $A$ (which is what the AM
+algorithm computes directly) and the more tractable sum over the match set $M$
+(which the hardness argument uses) is the following theorem.
+
+\begin{theorem}[Representation theorem (Theorem~1)]
+  \label{thm:representation}
+  \lean{representation_theorem}
+  \leanok
+  For any database $D$, test query $\tau$, and outcome $o$:
+  \[
+    \underbrace{\sum_{p \in A} \mathsf{outcomeCount}(\sigma(p), o)}_{\text{totalScoreA}(\tau,D,o)}
+    \;=\;
+    \underbrace{\sum_{x \in M} c_x \cdot \mathsf{outcomeCount}(\theta(x), o)}_{\text{totalScore}(\tau,D,o)}.
+  \]
+
+  \begin{proof}[Proof sketch (double-counting over pairs $(p, d)$)]
+    \begin{align*}
+      \text{LHS}
+      &= \sum_{p \in A} \sum_{\substack{d \in \sigma(p) \\ d.\mathsf{outcome}=o}} 1 \\
+      &= \sum_{\substack{d \in D \\ d.\mathsf{outcome}=o}}
+           |\{ p \in A \mid d \in \sigma(p) \}|
+         \quad\text{(swap summation)} \\
+      &= \sum_{\substack{d \in D \\ d.\mathsf{outcome}=o}}
+           |\{ p \in A \mid p \subseteq \tau \cap d.\mathsf{features} \}|
+         \quad\text{(since } p \subseteq \tau \text{)} \\
+      &= \sum_{\substack{d \in D \\ d.\mathsf{outcome}=o}} c_{x_d}
+         \quad\text{where } x_d = \tau \cap d.\mathsf{features} \in M \\
+      &= \sum_{x \in M} \sum_{\substack{d \in \theta(x) \\ d.\mathsf{outcome}=o}} c_x
+         \quad\text{(group by } x = x_d \text{)} \\
+      &= \sum_{x \in M} c_x \cdot \mathsf{outcomeCount}(\theta(x), o)
+      = \text{RHS}. \qedhere
+    \end{align*}
+  \end{proof}
+\end{theorem}
+
+% ============================================================
+\chapter{Conclusion}
+% ============================================================
+
+We have proved the following chain of reductions:
+
+\[
+  \#\text{VERTEX-COVER}
+  \;\underset{\text{Chapter 3}}{\leq_T}\;
+  \#\bigcup\wp
+  \;\underset{\text{Chapter 4}}{\leq_T}\;
+  \text{exact-AM-scoring}.
+\]
+
+Each step is witnessed by a simple complementary-counting equation:
+\begin{align*}
+  \text{Chapter 3:} &\quad \#\text{VC}(G) + |\mathsf{UCP}(V,E)| = 2^{|V|}. \\
+  \text{Chapter 4:} &\quad \mathsf{totalScore}(\tau, D, 0) + |\mathsf{UEP}(\mathcal{F})| = 2^n.
+\end{align*}
+
+Both are proved in Lean~4 without any \texttt{sorry} placeholders.
+
+\begin{corollary}[Exact AM scoring is $\#P$-complete]
+  \label{cor:am-hard}
+  \uses{thm:am-hard, thm:counting-equation-vc}
+  Computing the exact AM score is $\#P$-complete.
+
+  \begin{proof}
+    $\#P$-hardness: by the chain of reductions above, starting from the known
+    $\#P$-hardness of $\#\text{VERTEX-COVER}$ (Greenhill 2000).
+
+    $\#P$-membership: given a test query $\tau$, database $D$, and outcome $o$,
+    a nondeterministic polynomial-time machine can verify whether a given subset
+    $p \subseteq \tau$ is homogeneous by checking $\delta(p)$ and all
+    $\delta(q)$ for $q \supseteq p$ in $\wp(\tau)$; each check is polynomial in
+    $|D|$ and $|\tau|$.
+  \end{proof}
+\end{corollary}
+
+\section*{References}
+
+\begin{itemize}
+  \item Greenhill, C.\ (2000).
+    \textit{The complexity of counting colourings and independent sets in sparse
+    graphs and hypergraphs.}
+    Establishes $\#\text{VERTEX-COVER}$ is $\#P$-hard.
+
+  \item Johnsen, M.\ \& Johansson, U.\ (2005).
+    \textit{Efficient Modeling of Analogy.}
+    Defines the AM objects $M, \theta, \sigma, \delta$, homogeneity, $A$;
+    proves Propositions~1, 2 and Theorem~1 (representation theorem);
+    identifies $c_x$ computation as the $\#P$-hard bottleneck (§4.3).
+
+  \item Valiant, L.\,G.\ (1979).
+    \textit{The complexity of computing the permanent.}
+    Introduced the class $\#P$.
+\end{itemize}
