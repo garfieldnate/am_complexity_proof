@@ -1,2 +1,0 @@
--- This file is superseded by Doc.lean at the project root.
--- See Doc.lean for the Verso book root document.
