@@ -3,6 +3,7 @@
 ## What we have proved (informal + Lean)
 
 ### Informal (proof.md)
+
 - #⋃℘ is in #P (membership verifiable in polynomial time)
 - #VERTEX-COVER ≤ #⋃℘ via: given G=(V,E), set Sⱼ = V \ eⱼ for each edge eⱼ
   - T is a vertex cover ↔ T ∉ ⋃ⱼ ℘(Sⱼ)
@@ -11,6 +12,7 @@
 - Reference for #VERTEX-COVER being #P-hard: Greenhill (2000)
 
 ### Lean (CountUnionFamilyPowersetsProof/Basic.lean)
+
 - `IsVertexCover edges T` — definition
 - `unionComplementPowersets V edges` — definition of ⋃ ℘(V \ e)
 - `unionComplementPowersets_subset` — all elements lie in V.powerset
@@ -28,15 +30,17 @@
 **Proof strategy**: Show #⋃℘ ≤ exact-AM-scoring via explicit database construction:
 
 Given {S₁,...,Sₖ} ⊆ [n-1] (a #⋃℘ instance), construct:
-- τ = {0,...,n}  (add one fresh feature `n`)
-- d₀: features = {0,...,n-1},  outcome = 0  (one class-0 exemplar)
-- dᵢ: features = Sᵢ ∪ {n},    outcome = 1  (k class-1 exemplars)
+
+- τ = {0,...,n} (add one fresh feature `n`)
+- d₀: features = {0,...,n-1}, outcome = 0 (one class-0 exemplar)
+- dᵢ: features = Sᵢ ∪ {n}, outcome = 1 (k class-1 exemplars)
 
 Key facts to verify:
-- A  = {0,...,n-1} ∈ M_A  (deterministically homogeneous: σ(A) = {d₀} only)
-- Bᵢ = Sᵢ ∪ {n}   ∈ M_A  (deterministically homogeneous: σ(Bᵢ) ⊆ {dⱼ | Sᵢ ⊆ Sⱼ})
-- H(A) = {A ∩ Bᵢ} = {Sᵢ}  (exactly the #⋃℘ input family)
-- c_A = 2ⁿ − |⋃ᵢ ℘(Sᵢ)|   (readable from the AM score)
+
+- A = {0,...,n-1} ∈ M_A (deterministically homogeneous: σ(A) = {d₀} only)
+- Bᵢ = Sᵢ ∪ {n} ∈ M_A (deterministically homogeneous: σ(Bᵢ) ⊆ {dⱼ | Sᵢ ⊆ Sⱼ})
+- H(A) = {A ∩ Bᵢ} = {Sᵢ} (exactly the #⋃℘ input family)
+- c_A = 2ⁿ − |⋃ᵢ ℘(Sᵢ)| (readable from the AM score)
 
 This gives #⋃℘ ≤ exact-AM, so combined with Basic.lean: exact-AM is #P-hard.
 
@@ -109,10 +113,10 @@ def c (τ : Finset α) (D : Database α β) (x : Finset α) : ℕ :=
 
 ### Step 5: Key lemmas needed
 
-- `σ_antitone`: m ⊆ n → σ(D)(n) ⊆ σ(D)(m)  (σ is antitone on L)
+- `σ_antitone`: m ⊆ n → σ(D)(n) ⊆ σ(D)(m) (σ is antitone on L)
 - `θ_partition`: θ partitions D (Proposition 1 from paper — already proved informally)
-- `σ_eq_union_θ`: σ(p) = ⋃_{p ⊆ x, x ∈ M} θ(x)  (Proposition 2 from paper)
-- `representation_theorem`: tot = Σ_{x ∈ M} c_x · score(θ(x))  (Theorem 1)
+- `σ_eq_union_θ`: σ(p) = ⋃\_{p ⊆ x, x ∈ M} θ(x) (Proposition 2 from paper)
+- `representation_theorem`: tot = Σ\_{x ∈ M} c_x · score(θ(x)) (Theorem 1)
 
 ### Step 6: The hardness reduction (AM/Hardness.lean)
 
@@ -144,24 +148,28 @@ CountUnionFamilyPowersetsProof/
 ## Remaining work (Propositions.lean + Hardness.lean)
 
 ### Propositions.lean: Theorem 1 (representation_theorem)
+
 Need to prove `totalScoreA τ D o = totalScore τ D o` via double-counting.
 Key Lean tactic: `Finset.sum_comm'` or `Finset.sum_sigma'` to swap the sum over
-(p ∈ A, d ∈ σ(p)) into a sum over (x ∈ M, d ∈ θ(x)) weighted by c_x.
-The auxiliary lemmas `mem_σ_iff_subset_inter` and `c_eq_card_homogeneous_subsets`
+(p ∈ A, d ∈ σ(p)) into a sum over (x ∈ M, d ∈ θ(x)) weighted by c*x.
+The auxiliary lemmas `mem*σ_iff_subset_inter`and`c_eq_card_homogeneous_subsets`
 are proven and provide the key bijections.
 
 ### Hardness.lean: exact_AM_scoring_is_hard
+
 Need to prove the actual inequality:
-  c (testExemplar n) (encodeDatabase n family) (embedFin Finset.univ) =
-  2^n − (unionComplementPowersets Finset.univ (family.image (fun S => Finset.univ \ S))).card
+c (testExemplar n) (encodeDatabase n family) (embedFin Finset.univ) =
+2^n − (unionComplementPowersets Finset.univ (family.image (fun S => Finset.univ \ S))).card
 
 This requires:
+
 1. Showing homogeneous subsets of x_A = embedFin Finset.univ in the constructed database
    correspond exactly to vertex covers of the complement-edge graph.
 2. Applying counting_equation from Basic.lean.
 3. Combining with representation_theorem to get the reduction.
 
 ## Key references
+
 - Johnsen & Johansson (2005): "Efficient Modeling of Analogy"
   - §3: definitions of L, M, θ, σ, δ, homogeneity, A
   - §4: Propositions 1+2, Theorem 1 (representation theorem)
@@ -171,9 +179,20 @@ This requires:
 - Toda (1991): PH ⊆ P^#P
 
 ## Notes
+
 - `open Classical` is used in Basic.lean to avoid `DecidablePred (IsVertexCover)`.
   In the AM files, homogeneity will have the same issue. Accept this for now.
 - The lattice L = ℘(τ) is a Boolean algebra; Mathlib's `BooleanAlgebra` typeclass
   applies, but we work with `Finset` concretely rather than through the abstraction.
 - σ antitone on L is key for many proofs; prove it early as a standalone lemma.
 - The hardness reduction uses `Fin (n+1)` for the feature type and `Fin 2` for outcomes.
+
+## Bugs to File
+
+1. Lake — file with leanprover/lean4 (Lake lives there)
+
+Lake's LEAN_CC mechanism only works with Mach-O binaries, not shell scripts, so you can't use a wrapper to intercept the clang invocation. More importantly, Lake passes MACOSX_DEPLOYMENT_TARGET=99.0 when calling the Lean toolchain's clang — that's almost certainly a bug (it's intended to be an internal sentinel value, but it causes link failure on systems where clang validates it). The issue title would be something like: "lake exe generate-docs fails on macOS: MACOSX_DEPLOYMENT_TARGET=99.0 + ARG_MAX overflow with large Mathlib-importing executables".
+
+2. LLVM — the @file parser limit is a Lake/Lean issue to work around. The LLVM response-file parser silently truncating at ~1.4 MB is arguably an LLVM bug too, but it's a downstream consequence of (1): if Lake used a sensible deployment target or used ld64.lld's -filelist option instead of a flat command line, this would never be hit. Filing with LLVM is lower priority.
+
+The primary actionable bug to file is with Lake. The core ask: when the object-file list for a link step exceeds ARG_MAX, Lake should automatically write a response file and pass it to the linker, rather than constructing a single command line longer than the OS allows. This is a known class of problem (CMake, Cargo, and most other build systems handle it transparently). The GitHub issue would land in leanprover/lean4 under the Lake component.

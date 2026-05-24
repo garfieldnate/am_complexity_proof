@@ -196,6 +196,23 @@ lake build
 
 Requires Lean 4 and Mathlib.  The toolchain version is pinned in `lean-toolchain`.
 
+## Interactive HTML documentation (Verso)
+
+The proof is also presented as a literate document with hoverable types and proof
+states, built with [Verso](https://github.com/leanprover/verso).
+
+```bash
+./build-docs.sh
+# then open _out/html-multi/index.html
+```
+
+**Note on the build script:** `lake exe generate-docs` fails directly on macOS
+because linking ~8 400 Lean object files produces a command line (~1.4 MB) that
+exceeds the OS `ARG_MAX` limit (1 MB).  `build-docs.sh` works around this by
+bundling all objects into a single `.a` archive via `llvm-ar` (in 500-file
+batches to stay inside LLVM's own internal response-file limit) before calling
+clang.  This is a platform limitation, not a bug in the proof.
+
 ---
 
 ## References
