@@ -25,14 +25,21 @@ reductions.
 
 # The Intermediate Problem #⋃℘
 
-As an intermediate step we use the problem *#⋃℘*:
+As an intermediate step we use the problem *#⋃℘* (read "sharp union-powerset"):
 
-Given a finite family of sets \{S₁, …, Sₖ\} ⊆ 𝒫(U), compute
-`|⋃ᵢ 𝒫(Sᵢ)|`.
+Given a finite ground set _V_ and a finite family ℱ = \{S₁, …, Sₖ\}
+where each Sᵢ is a subset of _V_, compute `|⋃ᵢ 𝒫(Sᵢ)|`.
 
-A subset _T_ belongs to ⋃ᵢ 𝒫(Sᵢ) exactly when T ⊆ Sᵢ for some _i_.
-So *#⋃℘* asks: how many subsets of _U_ are contained in at least one Sᵢ?
+A "family of sets" is just a set whose elements are themselves sets — in
+other words, ℱ ⊆ 𝒫(_V_), meaning every member of ℱ is a subset of _V_.
+`𝒫(S)` denotes the powerset of _S_, the collection of all subsets of _S_.
+A subset _T_ of _V_ belongs to `⋃ᵢ 𝒫(Sᵢ)` exactly when _T_ ⊆ Sᵢ for
+some _i_.  So *#⋃℘* asks: how many _distinct_ subsets of _V_ are contained
+in at least one member of ℱ?
 
-This problem sits naturally between #VERTEX-COVER and AM: vertex covers map
-onto it combinatorially (Part I), and it embeds into AM algorithmically
+Because `⋃ᵢ 𝒫(Sᵢ)` is a set (not a multiset), each qualifying subset of _V_
+is counted once even if it is contained in several Sᵢ simultaneously.
+
+This problem sits naturally between *#VERTEX-COVER* and AM: vertex covers
+map onto it combinatorially (Part I), and it embeds into AM algorithmically
 (Part II).

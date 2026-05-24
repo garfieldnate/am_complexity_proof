@@ -1,6 +1,6 @@
 # Project TODO: AM #P-Completeness Formalization
 
-## What we have proved (informal + Lean)
+## What we have proven (informal + Lean)
 
 ### Informal (proof.md)
 
@@ -196,3 +196,8 @@ Lake's LEAN_CC mechanism only works with Mach-O binaries, not shell scripts, so 
 2. LLVM — the @file parser limit is a Lake/Lean issue to work around. The LLVM response-file parser silently truncating at ~1.4 MB is arguably an LLVM bug too, but it's a downstream consequence of (1): if Lake used a sensible deployment target or used ld64.lld's -filelist option instead of a flat command line, this would never be hit. Filing with LLVM is lower priority.
 
 The primary actionable bug to file is with Lake. The core ask: when the object-file list for a link step exceeds ARG_MAX, Lake should automatically write a response file and pass it to the linker, rather than constructing a single command line longer than the OS allows. This is a known class of problem (CMake, Cargo, and most other build systems handle it transparently). The GitHub issue would land in leanprover/lean4 under the Lake component.
+
+## TODO List
+
+- Add as many references to previous publications as possible
+- Can we generate the blueprint and Verso text from the same source? The LaTeX rendering in PDF looks great, but the web Verso version is not so well typeset for some reason.

@@ -21,21 +21,21 @@ LLVM_AR="$TOOLCHAIN/bin/llvm-ar"
 SDK="$(xcrun --show-sdk-path)"
 
 OBJ_RSP="$(mktemp /tmp/lean_objs_XXXXXX.rsp)"
-ARCHIVE="$(mktemp /tmp/lean_objs_XXXXXX.a)"
+# Generate a unique path but do NOT pre-create the archive file; llvm-ar must
+# create it itself (rcS on a 0-byte file from mktemp produces a corrupt archive).
+ARCHIVE="/tmp/lean_objs_$$.a"
 trap "rm -f '$OBJ_RSP' '$ARCHIVE'" EXIT
 
 # 1. Build all Lean modules (but the link step will fail — that's expected).
 echo "==> Building Lean modules (link failure is expected)..."
 lake build generate-docs 2>&1 || true
 
-# 2. Extract the object-file list from the failed build's trace.
+# 2. Collect all .c.o.export object files from the build cache.
+#    (Parsing the lake trace doesn't work on incremental builds because the
+#    trace is only emitted when the link step actually runs.)
 echo "==> Collecting object files..."
-lake build generate-docs 2>&1 \
-  | grep 'trace: .>' \
-  | head -1 \
-  | sed 's/trace: .> //' \
-  | tr ' ' '\n' \
-  | grep -E '\.c\.o(\.export)?$' \
+find "$REPO/.lake/build/ir" "$REPO/.lake/packages" \
+  -name '*.c.o.export' \
   > "$OBJ_RSP"
 
 COUNT=$(wc -l < "$OBJ_RSP" | tr -d ' ')
