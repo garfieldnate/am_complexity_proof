@@ -197,7 +197,61 @@ Lake's LEAN_CC mechanism only works with Mach-O binaries, not shell scripts, so 
 
 The primary actionable bug to file is with Lake. The core ask: when the object-file list for a link step exceeds ARG_MAX, Lake should automatically write a response file and pass it to the linker, rather than constructing a single command line longer than the OS allows. This is a known class of problem (CMake, Cargo, and most other build systems handle it transparently). The GitHub issue would land in leanprover/lean4 under the Lake component.
 
+## Generating integrated prose/Lean documentation
+
+**Goal:** have prose and machine-checked Lean live in the same source files,
+producing a readable document — rather than keeping `blueprint/src/content.tex`
+and the `.lean` files in sync by hand.
+
+### Approaches investigated
+
+**LeanBlueprint (current approach)**
+Prose in `blueprint/src/content.tex`, declarations linked via `\lean{}`.
+Produces a good-looking PDF.
+Downside: prose and code are in separate files; they can drift out of sync.
+
+**Verso (investigated, removed)**
+Official HTML generator from the Lean core team.
+Produces interactive HTML with hoverable types and proof states.
+Removed due to two interlocking bugs on macOS:
+- Lake sets `MACOSX_DEPLOYMENT_TARGET=99.0` when invoking the toolchain's clang;
+  that sentinel value causes the link step to fail with exit code 255.
+- The resulting link command for a Mathlib-importing executable exceeds macOS
+  ARG_MAX (1 MB); passing object files via an LLVM @file response file silently
+  truncates above ~1.4 MB.
+A workaround exists (batch llvm-ar archive + manual link), but it's fragile.
+The rendered HTML was also less readable than the blueprint PDF.
+→ Should file a bug with leanprover/lean4 (Lake component); see "Bugs to File".
+
+**Alectryon + LeanInk (investigated, not viable)**
+Literate proof tool from the Coq ecosystem; Lean 4 support requires LeanInk.
+LeanInk is archived at Lean 4.6.0-rc1 and cannot be built against Lean 4.29.1
+without rewriting ~15+ internal API call sites.
+Even when it works on standalone 4.6.0 files, the LaTeX output is poor:
+`/- -/` comment delimiters are rendered as syntax-highlighted code tokens rather
+than clean prose paragraphs.
+→ Not viable for this project.
+
+**LiterateLean (`tani/literate-lean`, v1.1.1, updated 2026-03-12)**
+A Lean 4 syntax extension that inverts the Alectryon model: prose is the default;
+Lean code lives in fenced ` ```lean ``` ` blocks.  The source file is valid
+Markdown, so `pandoc` can render it directly to PDF or HTML without any separate
+build step.  Supports Lean 4.29.0 (compatible with this project).
+
+Pro: single source of truth; pandoc PDF rendering is clean (prose, headings,
+code blocks styled separately); compatible with current toolchain.
+Con: no proof-state annotations in the output (unlike Verso/Alectryon); the
+fenced-block syntax is less natural for a heavily mathematical file; Unicode
+in code blocks requires `--pdf-engine=xelatex` and a fallback font.
+
+Demo PDF generated at `/tmp/literatelean_demo/demo.pdf`.
+→ Promising but not yet integrated into this project.
+
+### Current status
+
+Sticking with LeanBlueprint PDF for now.  If the prose/code sync problem becomes
+painful, LiterateLean is the most viable single-source option.
+
 ## TODO List
 
 - Add as many references to previous publications as possible
-- Can we generate the blueprint and Verso text from the same source? The LaTeX rendering in PDF looks great, but the web Verso version is not so well typeset for some reason.
